@@ -17,19 +17,21 @@ package twitter4j;
 
 /**
  * Represents result of "/1.1/media/upload.json"
- * 
+ *
  * @author Hiroaki TAKEUCHI - takke30 at gmail.com
  * @since Twitter4J 4.0.2
  */
 public final class UploadedMedia implements java.io.Serializable {
 
     private static final long serialVersionUID = 5393092535610604718L;
-    
+
     private int imageWidth;
     private int imageHeight;
     private String imageType;
     private long mediaId;
     private long size;
+    private String processingState;
+    private int processingCheckAfterSecs;
 
     /*package*/ UploadedMedia(JSONObject json) throws TwitterException {
         init(json);
@@ -55,6 +57,14 @@ public final class UploadedMedia implements java.io.Serializable {
         return size;
     }
 
+    public String getProcessingState() {
+        return processingState;
+    }
+
+    public int getProcessingCheckAfterSecs() {
+        return processingCheckAfterSecs;
+    }
+
     private void init(JSONObject json) throws TwitterException {
         mediaId = ParseUtil.getLong("media_id", json);
         size = ParseUtil.getLong("size", json);
@@ -65,6 +75,13 @@ public final class UploadedMedia implements java.io.Serializable {
                 imageHeight = ParseUtil.getInt("h", image);
                 imageType = ParseUtil.getUnescapedString("image_type", image);
             }
+
+            if (!json.isNull("processing_info")) {
+                JSONObject processingInfo = json.getJSONObject("processing_info");
+                processingState = ParseUtil.getUnescapedString("state", processingInfo);
+                processingCheckAfterSecs = ParseUtil.getInt("check_after_secs", processingInfo);
+            }
+
         } catch (JSONException jsone) {
             throw new TwitterException(jsone);
         }
@@ -100,7 +117,7 @@ public final class UploadedMedia implements java.io.Serializable {
     public String toString() {
         return "UploadedMedia{" +
                 "mediaId=" + mediaId +
-                ", imageWidth=" + imageWidth + 
+                ", imageWidth=" + imageWidth +
                 ", imageHeight=" + imageHeight +
                 ", imageType='" + imageType + '\'' +
                 ", size=" + size +
