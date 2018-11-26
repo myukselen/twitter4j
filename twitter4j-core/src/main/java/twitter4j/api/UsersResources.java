@@ -66,6 +66,19 @@ public interface UsersResources {
      */
     AccountSettings updateAccountSettings(Integer trendLocationWoeid, Boolean sleepTimeEnabled, String startSleepTime, String endSleepTime, String timeZone, String lang) throws TwitterException;
 
+    /**
+     * Updates the allowDmsFrom settings for the authenticating user.
+     * <br>This method has not been finalized and the interface is subject to change in incompatible ways.
+     * <br>This method calls https://api.twitter.com/1.1/account/settings.json
+     * <br>This method requires whitelisting from Twitter: https://twittercommunity.com/t/api-updates-for-direct-messages-rules/36061
+     *
+     * @param allowDmsFrom       Optional. "all" for anyone, "followers" for friends only
+     * @return the current trend, geo and sleep time information for the authenticating user.
+     * @throws TwitterException when Twitter service or network is unavailable
+     * @since Twitter4J 4.0.7
+    */
+    AccountSettings updateAllowDmsFrom(String allowDmsFrom) throws TwitterException;
+
     // update delivery device
 
     /**
@@ -96,6 +109,7 @@ public interface UsersResources {
      *                          or when the specified file object in not representing a file (IOException will be nested)
      * @see <a href="https://dev.twitter.com/docs/api/1.1/post/account/update_profile_background_image">POST account/update_profile_background_image | Twitter Developers</a>
      * @since Twitter4J 2.1.0
+     * @deprecated Since Twitter4J 4.0.7
      */
     User updateProfileBackgroundImage(File image, boolean tile)
         throws TwitterException;
@@ -117,7 +131,7 @@ public interface UsersResources {
         throws TwitterException;
 
     /**
-     * Sets one or more hex values that control the color scheme of the authenticating user's profile page on twitter.com. Each parameter's value must be a valid hexidecimal value, and may be either three or six characters (ex: #fff or #ffffff).
+     * Sets one or more hex values that control the color scheme of the authenticating user's profile page on twitter.com. Each parameter's value must be a valid hexadecimal value, and may be either three or six characters (ex: #fff or #ffffff).
      * <br>This method calls https://api.twitter.com/1.1/account/update_profile_colors.json
      *
      * @param profileBackgroundColor    optional, can be null

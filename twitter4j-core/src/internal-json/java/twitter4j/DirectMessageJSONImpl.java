@@ -25,6 +25,7 @@ import java.util.Date;
  * A data class representing sent/received direct message.
  *
  * @author Yusuke Yamamoto - yusuke at mac.com
+ * @author Hiroaki TAKEUCHI - takke30 at gmail.com
  */
 /*package*/ final class DirectMessageJSONImpl extends TwitterResponseImpl implements DirectMessage, java.io.Serializable {
     private static final long serialVersionUID = 7092906238192790921L;
@@ -33,22 +34,24 @@ import java.util.Date;
     private long senderId;
     private long recipientId;
     private Date createdAt;
-    private String senderScreenName;
-    private String recipientScreenName;
     private UserMentionEntity[] userMentionEntities;
     private URLEntity[] urlEntities;
     private HashtagEntity[] hashtagEntities;
     private MediaEntity[] mediaEntities;
     private SymbolEntity[] symbolEntities;
 
-
     /*package*/DirectMessageJSONImpl(HttpResponse res, Configuration conf) throws TwitterException {
         super(res);
         JSONObject json = res.asJSONObject();
-        init(json);
-        if (conf.isJSONStoreEnabled()) {
-            TwitterObjectFactory.clearThreadLocalMap();
-            TwitterObjectFactory.registerJSONObject(this, json);
+        try {
+            JSONObject event = json.getJSONObject("event");
+            init(event);
+            if (conf.isJSONStoreEnabled()) {
+                TwitterObjectFactory.clearThreadLocalMap();
+                TwitterObjectFactory.registerJSONObject(this, event);
+            }
+        } catch (JSONException jsone) {
+            throw new TwitterException(jsone);
         }
     }
 
@@ -57,71 +60,86 @@ import java.util.Date;
     }
 
     private void init(JSONObject json) throws TwitterException {
-        id = ParseUtil.getLong("id", json);
-        senderId = ParseUtil.getLong("sender_id", json);
-        recipientId = ParseUtil.getLong("recipient_id", json);
-        createdAt = ParseUtil.getDate("created_at", json);
-        senderScreenName = ParseUtil.getUnescapedString("sender_screen_name", json);
-        recipientScreenName = ParseUtil.getUnescapedString("recipient_screen_name", json);
         try {
-            sender = new UserJSONImpl(json.getJSONObject("sender"));
-            recipient = new UserJSONImpl(json.getJSONObject("recipient"));
-            if (!json.isNull("entities")) {
-                JSONObject entities = json.getJSONObject("entities");
-                int len;
-                if (!entities.isNull("user_mentions")) {
-                    JSONArray userMentionsArray = entities.getJSONArray("user_mentions");
-                    len = userMentionsArray.length();
-                    userMentionEntities = new UserMentionEntity[len];
-                    for (int i = 0; i < len; i++) {
-                        userMentionEntities[i] = new UserMentionEntityJSONImpl(userMentionsArray.getJSONObject(i));
-                    }
+            id = ParseUtil.getLong("id", json);
+            JSONObject messageCreate;
+            final JSONObject messageData;
+            if (!json.isNull("created_timestamp")) {
+                createdAt = new Date(json.getLong("created_timestamp"));
+                messageCreate = json.getJSONObject("message_create");
+                recipientId = ParseUtil.getLong("recipient_id", messageCreate.getJSONObject("target"));
+                senderId = ParseUtil.getLong("sender_id", messageCreate);
+                messageData = messageCreate.getJSONObject("message_data");
 
-                }
-                if (!entities.isNull("urls")) {
-                    JSONArray urlsArray = entities.getJSONArray("urls");
-                    len = urlsArray.length();
-                    urlEntities = new URLEntity[len];
-                    for (int i = 0; i < len; i++) {
-                        urlEntities[i] = new URLEntityJSONImpl(urlsArray.getJSONObject(i));
-                    }
-                }
-
-                if (!entities.isNull("hashtags")) {
-                    JSONArray hashtagsArray = entities.getJSONArray("hashtags");
-                    len = hashtagsArray.length();
-                    hashtagEntities = new HashtagEntity[len];
-                    for (int i = 0; i < len; i++) {
-                        hashtagEntities[i] = new HashtagEntityJSONImpl(hashtagsArray.getJSONObject(i));
-                    }
-                }
-
-                if (!entities.isNull("symbols")) {
-                    JSONArray symbolsArray = entities.getJSONArray("symbols");
-                    len = symbolsArray.length();
-                    symbolEntities = new SymbolEntity[len];
-                    for (int i = 0; i < len; i++) {
-                        // HashtagEntityJSONImpl also implements SymbolEntities
-                        symbolEntities[i] = new HashtagEntityJSONImpl(symbolsArray.getJSONObject(i));
-                    }
-                }
-
-                if (!entities.isNull("media")) {
-                    JSONArray mediaArray = entities.getJSONArray("media");
-                    len = mediaArray.length();
-                    mediaEntities = new MediaEntity[len];
-                    for (int i = 0; i < len; i++) {
-                        mediaEntities[i] = new MediaEntityJSONImpl(mediaArray.getJSONObject(i));
-                    }
-                }
+            }else{
+                // raw JSON data from Twitter4J 4.0.6 or before
+                createdAt = ParseUtil.getDate("created_at", json);;
+                senderId = ParseUtil.getLong("sender_id", json);
+                recipientId = ParseUtil.getLong("recipient_id", json);
+                messageData = json;
+            }
+            if (!messageData.isNull("entities")) {
+                JSONObject entities = messageData.getJSONObject("entities");
+                userMentionEntities = EntitiesParseUtil.getUserMentions(entities);
+                urlEntities = EntitiesParseUtil.getUrls(entities);
+                hashtagEntities = EntitiesParseUtil.getHashtags(entities);
+                symbolEntities = EntitiesParseUtil.getSymbols(entities);
             }
             userMentionEntities = userMentionEntities == null ? new UserMentionEntity[0] : userMentionEntities;
             urlEntities = urlEntities == null ? new URLEntity[0] : urlEntities;
             hashtagEntities = hashtagEntities == null ? new HashtagEntity[0] : hashtagEntities;
             symbolEntities = symbolEntities == null ? new SymbolEntity[0] : symbolEntities;
+
+            if (!messageData.isNull("attachment")) {
+                JSONObject attachment = messageData.getJSONObject("attachment");
+                // force parsing "type" as "media"
+                if (!attachment.isNull("media")) {
+                    mediaEntities = new MediaEntity[1];
+                    mediaEntities[0] = new MediaEntityJSONImpl(attachment.getJSONObject("media"));
+                }
+            }
             mediaEntities = mediaEntities == null ? new MediaEntity[0] : mediaEntities;
-            text = HTMLEntity.unescapeAndSlideEntityIncdices(json.getString("text"), userMentionEntities,
+            text = HTMLEntity.unescapeAndSlideEntityIncdices(messageData.getString("text"), userMentionEntities,
                     urlEntities, hashtagEntities, mediaEntities);
+        } catch (JSONException jsone) {
+            throw new TwitterException(jsone);
+        }
+    }
+
+    static DirectMessageList createDirectMessageList(HttpResponse res, Configuration conf) throws TwitterException {
+        try {
+            if (conf.isJSONStoreEnabled()) {
+                TwitterObjectFactory.clearThreadLocalMap();
+            }
+            JSONArray list;
+            DirectMessageList directMessages;
+            try {
+                JSONObject jsonObject = res.asJSONObject();
+                list = jsonObject.getJSONArray("events");
+                directMessages = new DirectMessageListImpl(list.length(), jsonObject, res);
+            }catch(TwitterException te){
+                if (te.getCause() != null && te.getCause() instanceof JSONException) {
+                    // serialized form from Twitter4J 4.0.6 or before
+                    list = res.asJSONArray();
+                    int size = list.length();
+                    directMessages = new DirectMessageListImpl(size, res);
+
+                }else{
+                  throw  te;
+                }
+            }
+            for (int i = 0; i < list.length(); i++) {
+                    JSONObject json = list.getJSONObject(i);
+                    DirectMessage directMessage = new DirectMessageJSONImpl(json);
+                    directMessages.add(directMessage);
+                    if (conf.isJSONStoreEnabled()) {
+                        TwitterObjectFactory.registerJSONObject(directMessage, json);
+                    }
+                }
+                if (conf.isJSONStoreEnabled()) {
+                    TwitterObjectFactory.registerJSONObject(directMessages, list);
+                }
+                return directMessages;
         } catch (JSONException jsone) {
             throw new TwitterException(jsone);
         }
@@ -133,13 +151,8 @@ import java.util.Date;
     }
 
     @Override
-    public String getText() {
-        return text;
-    }
-
-    @Override
-    public long getSenderId() {
-        return senderId;
+    public Date getCreatedAt() {
+        return createdAt;
     }
 
     @Override
@@ -148,32 +161,13 @@ import java.util.Date;
     }
 
     @Override
-    public Date getCreatedAt() {
-        return createdAt;
+    public long getSenderId() {
+        return senderId;
     }
 
     @Override
-    public String getSenderScreenName() {
-        return senderScreenName;
-    }
-
-    @Override
-    public String getRecipientScreenName() {
-        return recipientScreenName;
-    }
-
-    private User sender;
-
-    @Override
-    public User getSender() {
-        return sender;
-    }
-
-    private User recipient;
-
-    @Override
-    public User getRecipient() {
-        return recipient;
+    public String getText() {
+        return text;
     }
 
     @Override
@@ -201,46 +195,43 @@ import java.util.Date;
         return symbolEntities;
     }
 
-    /*package*/
-    static ResponseList<DirectMessage> createDirectMessageList(HttpResponse res, Configuration conf) throws TwitterException {
-        try {
-            if (conf.isJSONStoreEnabled()) {
-                TwitterObjectFactory.clearThreadLocalMap();
-            }
-            JSONArray list = res.asJSONArray();
-            int size = list.length();
-            ResponseList<DirectMessage> directMessages = new ResponseListImpl<DirectMessage>(size, res);
-            for (int i = 0; i < size; i++) {
-                JSONObject json = list.getJSONObject(i);
-                DirectMessage directMessage = new DirectMessageJSONImpl(json);
-                directMessages.add(directMessage);
-                if (conf.isJSONStoreEnabled()) {
-                    TwitterObjectFactory.registerJSONObject(directMessage, json);
-                }
-            }
-            if (conf.isJSONStoreEnabled()) {
-                TwitterObjectFactory.registerJSONObject(directMessages, list);
-            }
-            return directMessages;
-        } catch (JSONException jsone) {
-            throw new TwitterException(jsone);
-        }
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+
+        DirectMessageJSONImpl that = (DirectMessageJSONImpl) o;
+
+        if (id != that.id) return false;
+        if (senderId != that.senderId) return false;
+        if (recipientId != that.recipientId) return false;
+        if (text != null ? !text.equals(that.text) : that.text != null) return false;
+        if (createdAt != null ? !createdAt.equals(that.createdAt) : that.createdAt != null) return false;
+        // Probably incorrect - comparing Object[] arrays with Arrays.equals
+        if (!Arrays.equals(userMentionEntities, that.userMentionEntities)) return false;
+        // Probably incorrect - comparing Object[] arrays with Arrays.equals
+        if (!Arrays.equals(urlEntities, that.urlEntities)) return false;
+        // Probably incorrect - comparing Object[] arrays with Arrays.equals
+        if (!Arrays.equals(hashtagEntities, that.hashtagEntities)) return false;
+        // Probably incorrect - comparing Object[] arrays with Arrays.equals
+        if (!Arrays.equals(mediaEntities, that.mediaEntities)) return false;
+        // Probably incorrect - comparing Object[] arrays with Arrays.equals
+        return Arrays.equals(symbolEntities, that.symbolEntities);
     }
 
     @Override
     public int hashCode() {
-        return (int) id;
-    }
-
-    @Override
-    public boolean equals(Object obj) {
-        if (null == obj) {
-            return false;
-        }
-        if (this == obj) {
-            return true;
-        }
-        return obj instanceof DirectMessage && ((DirectMessage) obj).getId() == this.id;
+        int result = (int) (id ^ (id >>> 32));
+        result = 31 * result + (text != null ? text.hashCode() : 0);
+        result = 31 * result + (int) (senderId ^ (senderId >>> 32));
+        result = 31 * result + (int) (recipientId ^ (recipientId >>> 32));
+        result = 31 * result + (createdAt != null ? createdAt.hashCode() : 0);
+        result = 31 * result + Arrays.hashCode(userMentionEntities);
+        result = 31 * result + Arrays.hashCode(urlEntities);
+        result = 31 * result + Arrays.hashCode(hashtagEntities);
+        result = 31 * result + Arrays.hashCode(mediaEntities);
+        result = 31 * result + Arrays.hashCode(symbolEntities);
+        return result;
     }
 
     @Override
@@ -248,19 +239,35 @@ import java.util.Date;
         return "DirectMessageJSONImpl{" +
                 "id=" + id +
                 ", text='" + text + '\'' +
-                ", sender_id=" + senderId +
-                ", recipient_id=" + recipientId +
-                ", created_at=" + createdAt +
-                ", userMentionEntities=" + (userMentionEntities == null ? null : Arrays.asList(userMentionEntities)) +
-                ", urlEntities=" + (urlEntities == null ? null : Arrays.asList(urlEntities)) +
-                ", hashtagEntities=" + (hashtagEntities == null ? null : Arrays.asList(hashtagEntities)) +
-                ", sender_screen_name='" + senderScreenName + '\'' +
-                ", recipient_screen_name='" + recipientScreenName + '\'' +
-                ", sender=" + sender +
-                ", recipient=" + recipient +
-                ", userMentionEntities=" + (userMentionEntities == null ? null : Arrays.asList(userMentionEntities)) +
-                ", urlEntities=" + (urlEntities == null ? null : Arrays.asList(urlEntities)) +
-                ", hashtagEntities=" + (hashtagEntities == null ? null : Arrays.asList(hashtagEntities)) +
+                ", senderId=" + senderId +
+                ", recipientId=" + recipientId +
+                ", createdAt=" + createdAt +
+                ", userMentionEntities=" + Arrays.toString(userMentionEntities) +
+                ", urlEntities=" + Arrays.toString(urlEntities) +
+                ", hashtagEntities=" + Arrays.toString(hashtagEntities) +
+                ", mediaEntities=" + Arrays.toString(mediaEntities) +
+                ", symbolEntities=" + Arrays.toString(symbolEntities) +
                 '}';
     }
+
+    @Override
+    public String getSenderScreenName() {
+        throw new UnsupportedOperationException("Since Twitter4J 4.0.7, you are no longer able to use this method due to the API changes.");
+    }
+
+    @Override
+    public String getRecipientScreenName() {
+        throw new UnsupportedOperationException("Since Twitter4J 4.0.7, you are no longer able to use this method due to the API changes.");
+    }
+
+    @Override
+    public User getSender() {
+        throw new UnsupportedOperationException("Since Twitter4J 4.0.7, you are no longer able to use this method due to the API changes.");
+    }
+
+    @Override
+    public User getRecipient() {
+        throw new UnsupportedOperationException("Since Twitter4J 4.0.7, you are no longer able to use this method due to the API changes.");
+    }
+
 }

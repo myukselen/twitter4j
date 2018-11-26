@@ -38,8 +38,8 @@ public final class PrintSiteStreams {
             System.exit(-1);
         }
 
-        TwitterStream twitterStream = new TwitterStreamFactory().getInstance();
-        twitterStream.addListener(listener);
+        TwitterStream twitterStream = new TwitterStreamFactory().getInstance()
+                .addListener(listener);
 
         String[] split = args[0].split(",");
         long[] followArray = new long[split.length];
@@ -226,6 +226,31 @@ public final class PrintSiteStreams {
         public void onException(Exception ex) {
             ex.printStackTrace();
             System.out.println("onException:" + ex.getMessage());
+        }
+
+        @Override
+        public void onQuotedTweet(User source, User target, Status quotingTweet) {
+            System.out.println("onQuotedTweet: source: " +source.getScreenName()
+                    + " target:@" + target.getScreenName()
+                    + " quotedStatus:@" +quotingTweet.getUser().getScreenName() + " - "
+                    + quotingTweet.getText()
+            );
+        }
+
+        @Override
+        public void onMute(long forUser, User source, User target) {
+            System.out.println("onMute: for_user: " + forUser
+                    + " source:@" + source.getScreenName()
+                    + " target:@" + target.getScreenName()
+            );
+        }
+
+        @Override
+        public void onUnmute(long forUser, User source, User target) {
+            System.out.println("onUnmute: for_user: " + forUser
+                    + " source:@" + source.getScreenName()
+                    + " target:@" + target.getScreenName()
+            );
         }
     };
 }
