@@ -3,7 +3,7 @@
 
     <groupId>org.twitter4j</groupId>
     <artifactId>twitter4j-core</artifactId>
-    <version>4.0.7.MYN2</version>
+    <version>4.0.7.MYN3</version>
     <packaging>jar</packaging>
     <name>twitter4j-core</name>
     <description>A Java library for the Twitter API</description>
@@ -172,8 +172,8 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <configuration>
                     <encoding>UTF-8</encoding>
-                    <source>6</source>
-                    <target>6</target>
+                    <source>8</source>
+                    <target>8</target>
                 </configuration>
                 <version>2.5.1</version>
             </plugin>

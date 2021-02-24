@@ -20,6 +20,8 @@ import twitter4j.conf.ConfigurationContext;
 
 import java.io.*;
 import java.net.*;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -233,6 +235,7 @@ class HttpClientImpl extends HttpClientBase implements HttpResponseCode, java.io
                     logger.debug("Proxy AuthUser: " + CONF.getHttpProxyUser());
                     logger.debug("Proxy AuthPassword: " + CONF.getHttpProxyPassword().replaceAll(".", "*"));
                 }
+                /* meaningless after JDK 8u111 update, both global config and basic authentication schema is disabled by default
                 Authenticator.setDefault(new Authenticator() {
                     @Override
                     protected PasswordAuthentication
@@ -245,7 +248,7 @@ class HttpClientImpl extends HttpClientBase implements HttpResponseCode, java.io
                             return null;
                         }
                     }
-                });
+                });*/
             }
             final Proxy proxy = new Proxy(CONF.isHttpProxySocks() ? Proxy.Type.SOCKS : Proxy.Type.HTTP,
                     InetSocketAddress.createUnresolved(CONF.getHttpProxyHost(), CONF.getHttpProxyPort()));
@@ -253,6 +256,15 @@ class HttpClientImpl extends HttpClientBase implements HttpResponseCode, java.io
                 logger.debug("Opening proxied connection(" + CONF.getHttpProxyHost() + ":" + CONF.getHttpProxyPort() + ")");
             }
             con = (HttpURLConnection) new URL(url).openConnection(proxy);
+            if (CONF.getHttpProxyUser() != null && !CONF.getHttpProxyUser().equals("")) {
+                String auth = CONF.getHttpProxyUser() + ":" + CONF.getHttpProxyPassword();
+                String encodedAuth = Base64.getEncoder().encodeToString(auth.getBytes(StandardCharsets.UTF_8));
+                String authHeaderValue = "Basic " + encodedAuth;
+                con.setRequestProperty("Proxy-Authorization", authHeaderValue);
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Adding auth header to proxied connection(" + authHeaderValue + ")");
+                }
+            }
         } else {
             con = (HttpURLConnection) new URL(url).openConnection();
         }
